@@ -8,6 +8,43 @@ source: auto_recalls is duckdb.table('mayolo.auto_recalls') extend {
     total_affected_vehicles is `Potentially Affected`.sum()
   dimension: recall_url is concat('https://www.nhtsa.gov/recalls?nhtsaId=', `NHTSA ID`)
 
+  dimension: component_category is pick 'Electrical / electronics / software' when
+    (Component = 'ELECTRICAL SYSTEM')
+    or (Subject ~ r'(?i)control unit')
+    or (Subject ~ r'(?i)software')
+    or (Subject ~ r'(?i)short circuit')
+    or (Subject ~ r'(?i)circuit')
+    or (Subject ~ r'(?i)electronic')
+    or (Subject ~ r'(?i)wire harness')
+  pick 'Airbags & seat belts' when
+    (Component = 'AIR BAGS') or (Component = 'SEAT BELTS')
+  pick 'Suspension & steering' when
+    (Component = 'SUSPENSION')
+    or (Component = 'STEERING')
+    or (Component = 'WHEELS')
+    or (Subject ~ r'(?i)suspension')
+    or (Subject ~ r'(?i)alignment')
+  pick 'Fuel / engine / powertrain' when
+    (Component = 'FUEL SYSTEM, GASOLINE')
+    or (Component = 'POWER TRAIN')
+    or (Component = 'ENGINE AND ENGINE COOLING')
+    or (Subject ~ r'(?i)engine')
+    or (Subject ~ r'(?i)crankcase')
+    or (Subject ~ r'(?i)camshaft')
+    or (Subject ~ r'(?i)cylinder')
+    or (Subject ~ r'(?i)connecting rod')
+    or (Subject ~ r'(?i)coolant')
+    or (Subject ~ r'(?i)fuel')
+  pick 'Brakes' when
+    (Component = 'SERVICE BRAKES, HYDRAULIC')
+    or (Subject ~ r'(?i)brake')
+  pick 'Lighting & visibility' when
+    (Component = 'EXTERIOR LIGHTING')
+    or (Component = 'VISIBILITY')
+    or (Component = 'BACK OVER PREVENTION')
+    or (Subject ~ r'(?i)spoiler')
+  else 'Other / structural'
+
   view: recent_recalls is {
     group_by:
       recall_date is `Report Received Date` :: string
