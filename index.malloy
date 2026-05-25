@@ -8,43 +8,60 @@ source: auto_recalls is duckdb.table('mayolo.auto_recalls') extend {
     total_affected_vehicles is `Potentially Affected`.sum()
   dimension: recall_url is concat('https://www.nhtsa.gov/recalls?nhtsaId=', `NHTSA ID`)
 
-  dimension: component_category is pick 'Electrical / electronics / software' when
+ dimension: component_category is pick 'Driver assistance (ADAS)' when
+    (Component = 'FORWARD COLLISION AVOIDANCE')
+    or (Component = 'LANE DEPARTURE')
+    or (Component = 'ELECTRONIC STABILITY CONTROL')
+    or (Component = 'ELECTRONIC STABILITY CONTROL (ESC)')
+    or (Component = 'BACK OVER PREVENTION')
+    or (Component = 'VEHICLE SPEED CONTROL')
+    or (Subject ~ r'(?i)collision|lane depart|stability control|cruise control|adaptive|driver assist|automatic emergency')
+  pick 'Electrical / electronics / software' when
     (Component = 'ELECTRICAL SYSTEM')
-    or (Subject ~ r'(?i)control unit')
-    or (Subject ~ r'(?i)software')
-    or (Subject ~ r'(?i)short circuit')
-    or (Subject ~ r'(?i)circuit')
-    or (Subject ~ r'(?i)electronic')
-    or (Subject ~ r'(?i)wire harness')
-  pick 'Airbags & seat belts' when
-    (Component = 'AIR BAGS') or (Component = 'SEAT BELTS')
+    or (Component = 'HYBRID PROPULSION SYSTEM')
+    or (Component = 'COMMUNICATION')
+    or (Subject ~ r'(?i)control unit|software|short circuit|wire harness|electronic|battery|infotainment|display|sensor|module|wiring')
+  pick 'Airbags, seat belts & seats' when
+    (Component = 'AIR BAGS')
+    or (Component = 'SEAT BELTS')
+    or (Component = 'SEATS')
+    or (Component = 'CHILD SEAT')
+    or (Subject ~ r'(?i)air bag|airbag|seat belt|seatbelt|child seat|child restraint|occupant|head restraint')
+  pick 'Brakes' when
+    (Component = 'SERVICE BRAKES, HYDRAULIC')
+    or (Component = 'SERVICE BRAKES, AIR')
+    or (Component = 'PARKING BRAKE')
+    or (Subject ~ r'(?i)brake')
   pick 'Suspension & steering' when
     (Component = 'SUSPENSION')
     or (Component = 'STEERING')
+    or (Subject ~ r'(?i)suspension|steering|alignment|tie rod|ball joint|control arm|axle')
+  pick 'Tires & wheels' when
+    (Component = 'TIRES')
     or (Component = 'WHEELS')
-    or (Subject ~ r'(?i)suspension')
-    or (Subject ~ r'(?i)alignment')
+    or (Subject ~ r'(?i)tire|wheel|rim|lug')
   pick 'Fuel / engine / powertrain' when
     (Component = 'FUEL SYSTEM, GASOLINE')
+    or (Component = 'FUEL SYSTEM, OTHER')
+    or (Component = 'FUEL SYSTEM, DIESEL')
     or (Component = 'POWER TRAIN')
     or (Component = 'ENGINE AND ENGINE COOLING')
-    or (Subject ~ r'(?i)engine')
-    or (Subject ~ r'(?i)crankcase')
-    or (Subject ~ r'(?i)camshaft')
-    or (Subject ~ r'(?i)cylinder')
-    or (Subject ~ r'(?i)connecting rod')
-    or (Subject ~ r'(?i)coolant')
-    or (Subject ~ r'(?i)fuel')
-  pick 'Brakes' when
-    (Component = 'SERVICE BRAKES, HYDRAULIC')
-    or (Subject ~ r'(?i)brake')
+    or (Subject ~ r'(?i)engine|crankcase|camshaft|cylinder|connecting rod|coolant|fuel|transmission|drive shaft|differential|exhaust|turbocharger')
   pick 'Lighting & visibility' when
     (Component = 'EXTERIOR LIGHTING')
     or (Component = 'VISIBILITY')
-    or (Component = 'BACK OVER PREVENTION')
-    or (Subject ~ r'(?i)spoiler')
-  else 'Other / structural'
-
+    or (Subject ~ r'(?i)headlight|tail light|brake light|turn signal|reflector|fmvss 108|fmvss 111|fmvss 571|wiper|defroster|mirror|spoiler|windshield')
+  pick 'Structure & body' when
+    (Component = 'STRUCTURE')
+    or (Component = 'LATCHES/LOCKS/LINKAGES')
+    or (Component = 'TRAILER HITCHES')
+    or (Subject ~ r'(?i)latch|lock|hinge|door|hood|trunk|tailgate|frame|chassis|hitch|weld')
+  pick 'Equipment & accessories' when
+    (Component = 'EQUIPMENT')
+    or (Component = 'EQUIPMENT ADAPTIVE/MOBILITY')
+    or (Component = 'OTHER')
+  else 'Uncategorized'
+  
   view: recent_recalls is {
     group_by:
       recall_date is `Report Received Date` :: string
