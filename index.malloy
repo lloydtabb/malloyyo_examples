@@ -1,0 +1,24 @@
+// Data Source: wget https://data.transportation.gov/api/views/6axg-epim/rows.csv
+// import data:  create table auto_recalls as SELECT * FROM './rows.csv';
+
+source: auto_recalls is duckdb.table('mayolo.auto_recalls') extend {
+  measure:
+    recall_count is count()
+    percent_of_recalls is recall_count / all(recall_count) * 100
+    total_affected_vehicles is `Potentially Affected`.sum()
+  dimension: recall_url is concat('https://www.nhtsa.gov/recalls?nhtsaId=', `NHTSA ID`)
+
+  view: recent_recalls is {
+    group_by:
+      recall_date is `Report Received Date` :: string
+      `NHTSA ID`, recall_url, Manufacturer, Subject, `Potentially Affected`
+    order_by: 1 desc
+    limit: 10
+  }
+
+  view: by_year_line_chart is {
+    group_by: recall_year is year(`Report Received Date`)
+    aggregate: recall_count
+    order_by: recall_year
+  }
+}

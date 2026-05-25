@@ -1,0 +1,8 @@
+{
+  "connections": {
+    "duckdb": {
+      "is": "duckdb",
+      "databasePath":"md:mayolo"
+    }
+  }
+}
