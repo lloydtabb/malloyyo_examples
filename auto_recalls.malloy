@@ -1,0 +1,75 @@
+source: auto_recalls is duckdb.table('mayolo.auto_recalls') extend {
+  measure:
+    recall_count is count()
+    percent_of_recalls is recall_count / all(recall_count) * 100
+    total_affected_vehicles is `Potentially Affected`.sum()
+  dimension: recall_url is concat('https://www.nhtsa.gov/recalls?nhtsaId=', `NHTSA ID`)
+
+  dimension: component_category is pick 'Driver assistance (ADAS)' when
+    (Component = 'FORWARD COLLISION AVOIDANCE')
+    or (Component = 'LANE DEPARTURE')
+    or (Component = 'ELECTRONIC STABILITY CONTROL')
+    or (Component = 'ELECTRONIC STABILITY CONTROL (ESC)')
+    or (Component = 'BACK OVER PREVENTION')
+    or (Component = 'VEHICLE SPEED CONTROL')
+    or (Subject ~ r'(?i)collision|lane depart|stability control|cruise control|adaptive|driver assist|automatic emergency')
+  pick 'Electrical / electronics / software' when
+    (Component = 'ELECTRICAL SYSTEM')
+    or (Component = 'HYBRID PROPULSION SYSTEM')
+    or (Component = 'COMMUNICATION')
+    or (Subject ~ r'(?i)control unit|software|short circuit|wire harness|electronic|battery|infotainment|display|sensor|module|wiring')
+  pick 'Airbags, seat belts & seats' when
+    (Component = 'AIR BAGS')
+    or (Component = 'SEAT BELTS')
+    or (Component = 'SEATS')
+    or (Component = 'CHILD SEAT')
+    or (Subject ~ r'(?i)air bag|airbag|seat belt|seatbelt|child seat|child restraint|occupant|head restraint')
+  pick 'Brakes' when
+    (Component = 'SERVICE BRAKES, HYDRAULIC')
+    or (Component = 'SERVICE BRAKES, AIR')
+    or (Component = 'PARKING BRAKE')
+    or (Subject ~ r'(?i)brake')
+  pick 'Suspension & steering' when
+    (Component = 'SUSPENSION')
+    or (Component = 'STEERING')
+    or (Subject ~ r'(?i)suspension|steering|alignment|tie rod|ball joint|control arm|axle')
+  pick 'Tires & wheels' when
+    (Component = 'TIRES')
+    or (Component = 'WHEELS')
+    or (Subject ~ r'(?i)tire|wheel|rim|lug')
+  pick 'Fuel / engine / powertrain' when
+    (Component = 'FUEL SYSTEM, GASOLINE')
+    or (Component = 'FUEL SYSTEM, OTHER')
+    or (Component = 'FUEL SYSTEM, DIESEL')
+    or (Component = 'POWER TRAIN')
+    or (Component = 'ENGINE AND ENGINE COOLING')
+    or (Subject ~ r'(?i)engine|crankcase|camshaft|cylinder|connecting rod|coolant|fuel|transmission|drive shaft|differential|exhaust|turbocharger')
+  pick 'Lighting & visibility' when
+    (Component = 'EXTERIOR LIGHTING')
+    or (Component = 'VISIBILITY')
+    or (Subject ~ r'(?i)headlight|tail light|brake light|turn signal|reflector|fmvss 108|fmvss 111|fmvss 571|wiper|defroster|mirror|spoiler|windshield')
+  pick 'Structure & body' when
+    (Component = 'STRUCTURE')
+    or (Component = 'LATCHES/LOCKS/LINKAGES')
+    or (Component = 'TRAILER HITCHES')
+    or (Subject ~ r'(?i)latch|lock|hinge|door|hood|trunk|tailgate|frame|chassis|hitch|weld')
+  pick 'Equipment & accessories' when
+    (Component = 'EQUIPMENT')
+    or (Component = 'EQUIPMENT ADAPTIVE/MOBILITY')
+    or (Component = 'OTHER')
+  else 'Uncategorized'
+
+  view: recent_recalls is {
+    group_by:
+      recall_date is `Report Received Date` :: string
+      `NHTSA ID`, recall_url, Manufacturer, Subject, `Potentially Affected`
+    order_by: 1 desc
+    limit: 10
+  }
+
+  view: by_year_line_chart is {
+    group_by: recall_year is year(`Report Received Date`)
+    aggregate: recall_count
+    order_by: recall_year
+  }
+}
