@@ -4,5 +4,4 @@ import {auto_recalls} from './auto_recalls/auto_recalls.malloy'
 import {event_logs} from './events/events.malloy'
 import {baby_names} from './baby_names/baby_names.malloy'
 
-
 export {auto_recalls, event_logs, baby_names}
