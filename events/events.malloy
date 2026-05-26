@@ -39,6 +39,29 @@ source: event_logs is duckdb.table('guild.events') include {
     order_by: ts desc
   }
 
+  #" Show errors, grouped by container, file and function and some recent examples 
+  view: errors_grouped is {
+    where:
+      severity = ('ERROR'| 'CRITICAL' | 'ALERT'| 'EMERGENCY')
+      and resource.labels.container_name != 'runtime'
+      and labels.python_logger != 'gunicorn.error'
+    group_by:
+      errorGroups.id
+      resource.labels.container_name
+      sourceLocation.file
+      sourceLocation.function
+    aggregate:
+      error_count
+      first_seen is min(ts)
+      last_seen is max(ts)
+    nest: recent_examples is {
+      group_by: ts, severity, textPayload, jsonPayload
+      order_by: ts desc
+      limit: 3
+    }
+    order_by: error_count desc
+  }
+
   view: errors_by_container_and_hour is {
     group_by: resource.labels.container_name
     aggregate: event_count, error_count, error_rate
