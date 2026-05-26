@@ -5,8 +5,4 @@ import {event_logs} from './events/events.malloy'
 import {baby_names} from './baby_names/baby_names.malloy'
 
 
-//export {auto_recalls, event_logs, baby_names}
-
-source: baby_names_public is baby_names
-source: auto_recalls_public is auto_recalls
-source: event_logs_public is event_logs
+export {auto_recalls, event_logs, baby_names}
