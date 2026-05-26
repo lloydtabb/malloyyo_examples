@@ -1,8 +1,7 @@
 // test commit 
 
-import {auto_recalls_base} from './auto_recalls/auto_recalls.malloy'
-// import {event_logs} from './events/events.malloy'
+import {auto_recalls} from './auto_recalls/auto_recalls.malloy'
+import {event_logs} from './events/events.malloy'
 
-source: auto_recalls is auto_recalls_base
 
-// export {auto_recalls, event_logs}
+export {auto_recalls, event_logs}
