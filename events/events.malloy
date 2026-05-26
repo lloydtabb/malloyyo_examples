@@ -1,0 +1,51 @@
+##! experimental.access_modifiers
+
+#" event log data JSON file read directly into Motherduck"
+source: event_logs is duckdb.table('guild.events') include {
+  *
+  private: `timestamp`, receiveTimestamp
+} extend {
+  dimension: ts is `timestamp`::timestamp
+  dimension: receive_ts is receiveTimestamp::timestamp
+
+  measure: event_count is count()
+  measure: error_count is count() { where: severity = 'ERROR' }
+  measure: error_rate is error_count / event_count
+
+  view: by_severity is {
+    group_by: severity
+    aggregate: event_count
+  }
+
+  view: by_container is {
+    group_by: resource.labels.container_name
+    aggregate: event_count, error_count, error_rate
+  }
+
+  view: by_hour is {
+    group_by: ts_hour is ts.hour
+    aggregate: event_count, error_count
+    order_by: ts_hour
+  }
+
+  view: errors is {
+    where: severity = 'ERROR'
+    select:
+      ts
+      resource.labels.container_name
+      textPayload
+      sourceLocation.file
+      sourceLocation.function
+    order_by: ts desc
+  }
+
+  view: errors_by_container_and_hour is {
+    group_by: resource.labels.container_name
+    aggregate: event_count, error_count, error_rate
+    nest: by_hour is {
+      group_by: ts_hour is ts.hour
+      aggregate: event_count, error_count
+      order_by: ts_hour
+    }
+  }
+}

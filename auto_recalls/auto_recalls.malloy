@@ -1,3 +1,4 @@
+#"Auto recalls from the NHTS Aanalyzed by component category and recall trends over time. Data source: https://www.nhtsa.gov/recalls"
 source: auto_recalls is duckdb.table('mayolo.auto_recalls') extend {
   measure:
     recall_count is count()
