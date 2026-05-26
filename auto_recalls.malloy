@@ -1,4 +1,4 @@
-source: auto_recalls_base is duckdb.table('mayolo.auto_recalls') extend {
+source: auto_recalls is duckdb.table('mayolo.auto_recalls') extend {
   measure:
     recall_count is count()
     percent_of_recalls is recall_count / all(recall_count) * 100

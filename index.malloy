@@ -1,5 +1,5 @@
 // test commit 
 
-import {auto_recalls_base} from './auto_recalls.malloy';
+import {auto_recalls} from './auto_recalls.malloy';
 
-source: auto_recalls is auto_recalls_base
+export { auto_recalls }
