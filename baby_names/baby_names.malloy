@@ -1,0 +1,19 @@
+#" Baby names from the Social Security Administration "
+source: baby_names is duckdb.table('mayolo.baby_names') extend {
+  measure:
+    record_count is count()
+    total_babies is `number`.sum()
+    avg_babies_per_record is `number`.avg()
+    max_babies is `number`.max()
+    distinct_names is count(name)
+    earliest_year is `year`.min()
+    latest_year is `year`.max()
+  dimension:
+    is_female is gender = 'F'
+    decade is floor(`year` / 10) * 10
+    era is
+      pick 'Pre-1950' when `year` < 1950
+      pick '1950-1999' when `year` < 2000
+      else '2000+'
+    name_length is length(name)
+}
