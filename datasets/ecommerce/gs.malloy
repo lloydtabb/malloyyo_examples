@@ -1,0 +1,6 @@
+// tables from Google Cloud Storage
+
+source: users_table is duckdb.table('https://storage.googleapis.com/malloyyo/ecommerce/users.parquet') extend {}
+source: product_table is duckdb.table('https://storage.googleapis.com/malloyyo/ecommerce/products.parquet') extend {}
+source: inventory_items_table is duckdb.table('https://storage.googleapis.com/malloyyo/ecommerce/inventory_items.parquet') extend {}
+source: order_items_table is duckdb.table('https://storage.googleapis.com/malloyyo/ecommerce/order_items.parquet') extend {}

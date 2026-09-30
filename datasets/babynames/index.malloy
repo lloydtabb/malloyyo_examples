@@ -1,0 +1,3 @@
+import { baby_names, STATE, YEAR_RANGE, MIN_SAMPLE, NAME } from 'baby_names.malloy'
+
+export { baby_names, STATE, YEAR_RANGE, MIN_SAMPLE, NAME }

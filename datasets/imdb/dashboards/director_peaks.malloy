@@ -1,0 +1,217 @@
+##! experimental.virtual_source experimental.persistence experimental.join_types experimental.givens experimental.access_modifiers
+import "../imdb.malloy"
+
+given:
+  // Years thinner than this are dropped. Default 20 clears the pre-1930 rows
+  // and the still-accumulating recent ones.
+  # label="Min Titles in Release Year"
+  MIN_YEAR_TITLES :: filter<number> is f'>= 20'
+
+  // A director's peak is only meaningful against a body of work.
+  # label="Min Films by Director"
+  MIN_FILMS :: filter<number> is f'>= 3'
+
+  // Which director's filmography to expand. Keyed on nconst rather than name
+  // because primaryName is not unique — two directors share one often enough
+  // that a name here would silently merge their filmographies.
+  # label="Director"
+  DIRECTOR_ID :: filter<string> is f''
+
+source: movies_norm is movies extend {
+  // Votes and film count per release year — the normalizing denominator.
+  join_one: year_stats is (
+    movies -> {
+      group_by: startYear
+      aggregate:
+        year_votes is numVotes.sum()
+        year_titles is count()
+    }
+  ) on startYear = year_stats.startYear
+  // A film's pull within its own year. numVotes and year_votes are both raw
+  // counts, so this is a true fraction that sums to 1 across a year.
+  dimension: vote_share is numVotes / year_stats.year_votes
+}
+
+// One row per director: career totals plus the single film that took the
+// largest share of its year. The nest is limit 1 and the second stage unnests
+// it, so what comes out is flat and one-row-per-director.
+//
+// max() not sum() inside the nest: the principals join fans a title out to one
+// row per cast/crew member, and share is a property of the title, not of the
+// join. career_share is a symmetric aggregate so it survives the same fan-out.
+// Genres, for the picker. Under 100 films makes for a long menu of one-director
+// entries, so they're dropped — same floor genre_pairs uses.
+query: genre_options is movies -> {
+  group_by: genre is genres.value
+  aggregate: title_count
+  having: title_count >= 100
+  order_by: genre asc
+}
+
+query: director_peak_rows is movies_norm -> {
+  where:
+    job = 'director',
+    principals.people.birthYear is not null,
+    year_stats.year_titles ~ $MIN_YEAR_TITLES,
+    // Narrows which films count toward the peak and the career, NOT the
+    // denominator: a horror film's share is still measured against every vote
+    // cast that year, which is what keeps the number comparable across genres.
+    genre ~ $GENRE
+  group_by:
+    nconst is principals.nconst
+    director is name
+    director_url is name_url
+    birth_year is principals.people.birthYear
+  aggregate:
+    career_share is vote_share.sum()
+    film_count is count(tconst)
+  nest: peak is {
+    // movie_thumb, not movie_image: 50 posters at w154 is several megabytes
+    // for a table that shows them an inch tall.
+    group_by: title, release_year, movie_thumb, movie_url
+    aggregate: share is vote_share.max()
+    order_by: share desc
+    limit: 1
+  }
+} -> {
+  select:
+    nconst
+    director
+    director_url
+    birth_year
+    career_share
+    film_count
+    peak_title is peak.title
+    peak_year is peak.release_year
+    peak_thumb is peak.movie_thumb
+    peak_url is peak.movie_url
+    peak_share is peak.share
+    age_at_peak is peak.release_year - birth_year
+}
+
+// One director's filmography, fetched on demand when a row is expanded rather
+// than nested into the main query — 200 directors' films up front would be tens
+// of thousands of rows for the handful anyone actually opens.
+//
+// Carries the SAME three filters as director_peak_rows (year floor, genre,
+// director) so the films listed are exactly the set the row's peak and career
+// share were computed from. Without that, a genre-scoped row would expand to a
+// filmography whose numbers don't add up to what it claims.
+query: director_films is movies_norm -> {
+  where:
+    job = 'director',
+    principals.nconst ~ $DIRECTOR_ID,
+    year_stats.year_titles ~ $MIN_YEAR_TITLES,
+    genre ~ $GENRE
+  group_by:
+    tconst
+    title
+    release_year
+    movie_thumb
+    movie_url
+  aggregate:
+    // max(), not sum(): these belong to the title, and the principals join
+    // fans each title out to one row per credited person.
+    votes is numVotes.max()
+    share is vote_share.max()
+    average_rating
+  // Ordered by share of its release year — the same weighting that picked the
+  // peak and summed the career, so the first film listed IS the peak film and
+  // the rest fall away in the order they contributed.
+  order_by: share desc
+}
+
+source: director_peaks is director_peak_rows extend {
+  measure:
+    director_count is count()
+    avg_age is age_at_peak.avg()
+    avg_peak_year is peak_year.avg()
+
+  // Bucket dimensions for the two charts. Kept NUMERIC rather than concat'ed
+  // into range labels: a number formats cleanly with # number=, sorts on its
+  // own, and stays a single dimension — a string label would need a separate
+  // sort key, and any extra dimension gets promoted to a colour series.
+  dimension:
+    # number="##" label="Age at Peak"
+    age_band is floor(age_at_peak / 5) * 5
+    # number="####" label="Decade"
+    peak_decade is floor(peak_year / 10) * 10
+}
+
+# artifact { title="Director Peaks" }
+# dashboard {columns=6}
+#" How old was each director when they made the film that dominated its year
+query: director_peaks_dash is director_peaks -> {
+  where: film_count ~ $MIN_FILMS
+
+  # colspan=2
+  aggregate:
+    # label="Directors"
+    director_count
+    # label="Mean Age at Peak" number="##.#"
+    avg_age
+    # label="Mean Peak Year" number="####"
+    avg_peak_year
+
+  # colspan=3
+  nest:
+    # break
+    # bar_chart { x=age_band y=directors } label="Age at Peak"
+    #" Age at peak, in five-year bands
+    age_distribution is {
+      group_by: age_band
+      aggregate: directors is count()
+      order_by: age_band asc
+    }
+
+    # bar_chart { x=peak_decade y=mean_peak_age } label="Peak Age by Decade"
+    #" Mean age at peak, by the decade the peak film came out
+    age_by_decade is {
+      group_by: peak_decade
+      aggregate:
+        # number="##.#" label="Mean Age"
+        mean_peak_age is avg_age
+        # label="Directors"
+        directors is count()
+      order_by: peak_decade asc
+    }
+
+    # colspan=6 label="Directors by Career Share"
+    #" Ranked by career share — the sum of each film's share of its release year
+    top_directors is {
+      group_by:
+        // The model's # image tag doesn't survive the select into the virtual
+        // source, so the annotation is reapplied here — without it the cell
+        // renders the CDN URL as text and blows the row height out.
+        # image {width="46px" height="69px"} label="Poster"
+        peak_thumb
+        # hidden
+        peak_url
+        # hidden
+        director_url
+        # hidden
+        nconst
+        // Clicking a director opens the works_together dashboard seeded with
+        // their name — the given there is NAME, same as the model's `name`.
+        # drill { to=[works_together] given=NAME }
+        # label="Director"
+        director
+        # number="####" label="Born"
+        birth_year
+        # label="Peak Film"
+        peak_title
+        # number="####" label="Year"
+        peak_year
+        # label="Age at Peak"
+        age_at_peak
+      aggregate:
+        # percent label="Share of Year"
+        share_of_year is peak_share.max()
+        # label="Films"
+        films is film_count.max()
+        # number="0.00" label="Career Share"
+        career is career_share.max()
+      order_by: career desc
+      limit: 200
+    }
+}

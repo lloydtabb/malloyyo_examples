@@ -1,0 +1,109 @@
+##! experimental.virtual_source experimental.persistence experimental.join_types experimental.givens experimental.access_modifiers
+import "../index.malloy"
+
+// Who a person makes films with. The model exposes people on a title as two
+// independent flattened pairs — (name, job) and (name2, job2) — so pinning
+// `name` to one person and grouping by `name2` walks their collaborators
+// without touching the principals join by hand.
+//
+// Grouping by name2 restricts the principals2 rows to that one person, which is
+// why job2 nested inside the group reads as THEIR role and not as every role on
+// the film.
+
+# artifact { title="People that worked together" givens {NAME='Tom Hanks'}}
+query: works_together is movies -> works_with + {
+  where: name ~ $NAME
+  nest: by_title is {
+    group_by: title
+    aggregate: total_ratings
+  }
+}
+
+// Typeahead for the person picker.
+//
+// The stock suggest layer behind NAME matches on a PREFIX, so "Kurosawa" finds
+// nobody — the name on file is "Akira Kurosawa". Routing the typed text through
+// its own given lets the component commit filters.contains(term) and get a
+// substring match, with the escaping handled by the filter helper rather than
+// by concatenating query text.
+given:
+  # label="Search"
+  PERSON_SEARCH :: filter<string> is f''
+
+// lower() on the column, and the component lowercases the term — LIKE is
+// case-sensitive here, and the stock suggest layer does the same thing.
+query: person_search is movies -> {
+  where: lower(name) ~ $PERSON_SEARCH
+  group_by: name
+  aggregate: total_ratings
+  order_by: total_ratings desc
+  limit: 8
+}
+
+// Headline numbers for the selected person, plus the roles they work in and a
+// film-per-year career strip.
+query: person_summary is movies -> {
+  where: name ~ $NAME
+  aggregate:
+    title_count
+    total_ratings
+    average_rating
+  // primaryName is NOT unique, so NAME can select more than one real person.
+  // Nesting the ids rather than grouping by them keeps the headline numbers
+  // whole and lets the page link the main one (and say so when there are two).
+  nest: ids is {
+    group_by: person_url is name_url
+    aggregate: title_count
+    order_by: title_count desc
+  }
+  nest: roles is {
+    group_by: role is job
+    aggregate: title_count
+    order_by: title_count desc
+  }
+  nest: career is {
+    group_by: release_year
+    aggregate: title_count
+    order_by: release_year asc
+  }
+}
+
+// One row per collaborator: how often they work together, in what role, and
+// the films they share.
+query: collaborators is movies -> {
+  where: name ~ $NAME, name != name2
+  // Grouped by the person's IMDb id as well as their name: primaryName is not
+  // unique, and two different people sharing one would otherwise merge into a
+  // single row with their credits added together.
+  group_by:
+    person is name2
+    person_url is name2_url
+  aggregate:
+    shared_films is title_count
+    total_ratings
+  // job2 comes from the same principals2 row the group is on, so this is the
+  // COLLABORATOR's role, not a job breakdown of the films.
+  nest: roles is {
+    group_by: role is job2
+    aggregate: title_count
+    order_by: title_count desc
+    limit: 3
+  }
+  nest: films is {
+    group_by:
+      tconst
+      title
+      release_year
+      movie_thumb
+      movie_url
+    // max(), not sum(): votes belong to the title, and the principals join
+    // fans each title out to one row per credited person.
+    aggregate:
+      votes is numVotes.max()
+      average_rating
+    order_by: votes desc
+    limit: 12
+  }
+  order_by: shared_films desc, total_ratings desc
+  limit: 24
+}

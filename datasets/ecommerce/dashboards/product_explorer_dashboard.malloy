@@ -1,0 +1,113 @@
+##! experimental.access_modifiers
+##! experimental.givens
+
+import "../index.malloy"
+
+// --------------------------------------------------------------------------
+// Product & Brand Explorer — data behind the React dashboard
+// (`product_explorer_dashboard.jsx`, the flat sibling the dev server picks up).
+//
+// A custom dashboard renders itself, so every tile here returns FLAT rows: all
+// shaping, ranking, and rate arithmetic happens in Malloy and the JSX only maps
+// column names into Vega-Lite encodings.
+// --------------------------------------------------------------------------
+
+// One filter contract, written once. Every query below runs against this
+// extended source; referencing the givens HERE is what publishes the
+// Period / Department / Category / Brand / Product control specs to the
+// runtime (it walks the `# artifact` query for the givens it touches).
+source: explorer is order_items extend {
+  where:
+    inventory_items.product_brand ~ $BRAND,
+    inventory_items.product_category ~ $CATEGORY,
+    inventory_items.product_name ~ $PRODUCT,
+    inventory_items.product_department ~ $DEPARTMENT,
+    created_at ~ $PERIOD
+}
+
+// The `# artifact` query: headline numbers for the hero + KPI strip, and the
+// query whose given references define the dashboard's control bar.
+# artifact { title="Product & Brand Explorer" }
+#" Product hierarchy performance — department → category → brand → product, with sales, gross margin, and units. Filter by brand, category, product, or department.
+query: product_explorer_dashboard is explorer -> {
+  aggregate:
+    sales is total_sales
+    margin is total_gross_margin
+    margin_rate is total_gross_margin / nullif(total_sales, 0)
+    units is order_item_count
+    orders is order_count
+    avg_item_price is total_sales / nullif(order_item_count, 0)
+    products is count(inventory_items.product_name)
+    brands is count(inventory_items.product_brand)
+    categories is count(inventory_items.product_category)
+}
+
+// Monthly sales and gross margin. Both are dollars, so ONE axis carries both —
+// bars for sales, a line for the margin riding on top of them (never a second
+// y-scale).
+query: explorer_trend is explorer -> {
+  group_by: order_month is created_at.month
+  aggregate:
+    sales is total_sales
+    margin is total_gross_margin
+    units is order_item_count
+  order_by: order_month
+}
+
+// Department split — the top of the hierarchy, drawn as one part-to-whole bar.
+query: explorer_departments is explorer -> {
+  group_by: department is inventory_items.product_department
+  aggregate:
+    sales is total_sales
+    margin is total_gross_margin
+    units is order_item_count
+    share is percent_of_sales
+  order_by: sales desc
+}
+
+query: explorer_categories is explorer -> {
+  top: 12
+  group_by: category is inventory_items.product_category
+  aggregate:
+    sales is total_sales
+    margin is total_gross_margin
+    margin_rate is total_gross_margin / nullif(total_sales, 0)
+    units is order_item_count
+  order_by: sales desc
+}
+
+query: explorer_brands is explorer -> {
+  top: 12
+  group_by: brand is inventory_items.product_brand
+  aggregate:
+    sales is total_sales
+    margin is total_gross_margin
+    units is order_item_count
+  order_by: sales desc
+}
+
+query: explorer_products is explorer -> {
+  top: 12
+  group_by:
+    product is inventory_items.product_name
+    brand is inventory_items.product_brand
+  aggregate:
+    sales is total_sales
+    units is order_item_count
+  order_by: sales desc
+}
+
+// Positioning map: where each category sits on price vs margin rate, sized by
+// sales. Split by department because the same category name (Jeans, Shorts)
+// behaves differently on each side of the catalog.
+query: explorer_category_mix is explorer -> {
+  group_by:
+    category is inventory_items.product_category
+    department is inventory_items.product_department
+  aggregate:
+    sales is total_sales
+    units is order_item_count
+    margin_rate is total_gross_margin / nullif(total_sales, 0)
+    avg_item_price is total_sales / nullif(order_item_count, 0)
+  order_by: sales desc
+}

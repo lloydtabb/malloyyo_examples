@@ -1,0 +1,35 @@
+##! experimental.access_modifiers
+##! experimental.givens
+
+import "../index.malloy"
+
+# artifact { title="Customer Insights"}
+#" Who's buying — spend tiers, loyalty, acquisition source, best customers, and returns. Filter by brand, category, product, or department.
+# dashboard {columns=6}
+query: customer_insights_dashboard is order_items -> {
+  where:
+    inventory_items.product_brand ~ $BRAND,
+    inventory_items.product_category ~ $CATEGORY,
+    inventory_items.product_name ~ $PRODUCT,
+    inventory_items.product_department ~ $DEPARTMENT,
+    created_at ~ $PERIOD
+  # colspan=2
+  aggregate:
+    total_sales
+    user_count
+    order_count
+    # currency
+    average_order_value is total_sales / order_count
+  # colspan=3
+  nest:
+    # break
+    # bar_chart
+    users_by_spend_category
+    users_by_lifetime_tier
+    # bar_chart
+    sales_by_traffic_source
+    top_customers
+    frequent_returners
+    # shape_map
+    sales_by_state
+}

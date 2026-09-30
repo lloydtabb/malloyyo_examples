@@ -1,0 +1,55 @@
+##! experimental.access_modifiers
+##! experimental.givens
+
+import "../index.malloy"
+
+// Filtered base: every tile below runs against this extended source, so the
+// given mapping (where: … ~ $GIVEN) is applied once and inherited by all tiles.
+// Referencing the givens here is what makes the Brand / Category / Product /
+// Department / Time controls render.
+source: overview_data is order_items extend {
+  where:
+    inventory_items.product_brand ~ $BRAND,
+    inventory_items.product_category ~ $CATEGORY,
+    inventory_items.product_name ~ $PRODUCT,
+    inventory_items.product_department ~ $DEPARTMENT,
+    created_at ~ $PERIOD
+
+  # colspan=2
+  view: kpis is {
+    aggregate:
+      total_sales
+      total_gross_margin
+      order_count
+      order_item_count
+      user_count
+  }
+
+  # break
+  # line_chart
+  # colspan=3
+  view: sales_trend is by_month
+
+  # bar_chart
+  # colspan=3
+  view: categories is top_categories
+
+  # colspan=3
+  view: brands is top_brands
+
+  # colspan=3
+  view: products is top_products
+
+  # colspan=3
+  view: geography is sales_by_state
+
+  # colspan=3
+  view: customers is top_customers
+
+  # bar_chart
+  # colspan=3
+  view: statuses is orders_by_status
+}
+
+##" Business health at a glance — sales, margin, and orders with a monthly trend, top categories / brands / products, geography, and best customers. Filter by brand, category, product, or department.
+## artifact { title="Business Overview" tiles=["overview_data -> kpis", "overview_data -> sales_trend", "overview_data -> categories", "overview_data -> brands", "overview_data -> products", "overview_data -> geography", "overview_data -> customers", "overview_data -> statuses"] dashboard_columns=6 }

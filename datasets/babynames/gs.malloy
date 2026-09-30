@@ -1,0 +1,1 @@
+source: baby_names_table is duckdb.table('https://storage.googleapis.com/malloyyo/baby_names/baby_names.parquet') 

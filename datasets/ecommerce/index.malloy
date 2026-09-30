@@ -1,0 +1,19 @@
+##! experimental.givens
+
+// Entry point. Selectively surface the semantic source, the dashboard filter
+// givens, and the `# artifact`-tagged dashboard queries so
+// `malloyyo dashboard dev` (entry: index.malloy) discovers the dashboards and
+// can supply user-selected filter values.
+import {
+  order_items,
+  inventory_items,        // backs the Brand / Category / Product / Department suggest lists
+  brand_suggest, category_suggest, product_suggest, department_suggest,
+  PRODUCT, CATEGORY, BRAND, PERIOD, DEPARTMENT
+} from 'ecommerce.malloy'
+
+export {
+  order_items,
+  inventory_items,        // backs the Brand / Category / Product / Department suggest lists
+  brand_suggest, category_suggest, product_suggest, department_suggest,
+  PRODUCT, CATEGORY, BRAND, PERIOD, DEPARTMENT
+}

@@ -1,0 +1,149 @@
+##! experimental { access_modifiers givens }
+
+import "../index.malloy"
+
+// Scoring weights for the "Possible Classmates" tile — the exponent each match
+// dimension gets in `match_score` (0 = ignore that dimension entirely, 1 = the
+// old equal blend, 3 = be very picky about it). Declared HERE, not in the model,
+// because nothing outside this dashboard scores names. The sliders live in
+// name_explorer.jsx and are passed per-query, so moving one re-runs only
+// `similar_names`.
+given:
+  # label="Name frequency" range_min=0 range_max=3 step=0.1
+  W_FREQ :: number is 1.0
+  # label="Location" range_min=0 range_max=3 step=0.1
+  W_PLACE :: number is 1.0
+  # label="Time" range_min=0 range_max=3 step=0.1
+  W_TIME :: number is 1.0
+
+// What "same place" and "same time" mean when the user isolates them by clicking
+// the map / the decade rail. Each pair is a filter plus an ON flag: an EMPTY
+// filter matches every row (f'' is "all"), so there's no way to ask "did the
+// user pick anything?" from the filter alone — the flag is what lets the score
+// fall back to the name's OWN peak decade / top state when nothing is selected.
+given:
+  # label="Isolated states"
+  FOCUS_STATE :: filter<string> is f''
+  # label="States isolated?"
+  USE_FOCUS_STATE :: boolean is false
+  # label="Isolated years"
+  FOCUS_YEARS :: filter<number> is f''
+  # label="Years isolated?"
+  USE_FOCUS_YEARS :: boolean is false
+
+#" One name: headline numbers, where it's concentrated, and how it trends "
+# artifact { title="Name explorer"}
+query: name_explorer is baby_names -> {
+  extend: {
+    dimension: is_name is name ~ $NAME
+    measure:
+      babies_named is total_babies { where: is_name}
+      // Overall national rank of NAME (join is per-name, so max picks its value).
+      name_rank is name_facts.overall_rank.max() { where: is_name}
+  }
+  aggregate:
+    total_births is babies_named
+    overall_rank is name_rank
+    // Male share OF THIS NAME (both filtered to is_name; the un-scoped version
+    // returned the all-names ~52% for every name).
+    percent_male is total_babies {where: is_name and gender = 'M'} / babies_named
+}
+
+// Flat: per-capita concentration by state (all years). per_100k = births with
+// the name per 100,000 births in that state, which normalizes for state size.
+query: name_by_state is baby_names -> {
+  group_by: state
+  aggregate:
+    per_100k is total_babies { where: name ~ $NAME } / total_babies * 100000
+    babies_named is total_babies { where: name ~ $NAME }
+  order_by: per_100k desc
+}
+
+// Flat: births per year for the name, split male / female.
+query: name_over_time is baby_names -> {
+  where: name ~ $NAME
+  group_by: birth_year, gender
+  aggregate: babies_named is total_babies
+  order_by: birth_year
+}
+
+// baby_names carrying the target name's "signature" as joined scalars, so every
+// candidate name can be scored against it in one pass:
+//   dsig.target_decade   — the decade NAME peaks in (by total births)
+//   ssig.target_state    — the state NAME is most concentrated in per-capita
+//                          (name births / all births in state — size-normalized;
+//                          floored at 200 name-births so a tiny state can't top
+//                          the ranking on noise)
+//   nsig.target_national — NAME's national total, for popularity matching
+source: names_vs_target is baby_names extend {
+  join_one: dsig is (
+    baby_names -> { where: name ~ $NAME; group_by: decade; aggregate: b is total_babies; order_by: b desc; limit: 1 }
+    -> { select: target_decade is decade }
+  ) on true
+  join_one: ssig is (
+    baby_names -> {
+      group_by: state
+      aggregate:
+        pc is total_babies { where: name ~ $NAME } / total_babies
+        named is total_babies { where: name ~ $NAME }
+      having: named > 200
+      order_by: pc desc
+      limit: 1
+    }
+    -> { select: target_state is state }
+  ) on true
+  join_one: nsig is (
+    baby_names -> { where: name ~ $NAME; aggregate: target_national is total_babies }
+  ) on true
+  // "Same time" / "same place" — the isolated years/states when the dashboard
+  // has a selection, otherwise NAME's own peak decade and top state.
+  dimension:
+    in_focus_time is
+      pick birth_year ~ $FOCUS_YEARS when $USE_FOCUS_YEARS
+      else decade = dsig.target_decade
+    in_focus_place is
+      pick state ~ $FOCUS_STATE when $USE_FOCUS_STATE
+      else state = ssig.target_state
+
+  measure:
+    // scalar copies of the joined signature (usable in aggregate expressions)
+    target_n is nsig.target_national.max()
+    peak_decade is dsig.target_decade.max()
+    // how much of a candidate's births fall in the focused era / place
+    time_fit is total_babies { where: in_focus_time } / total_babies
+    place_fit is total_babies { where: in_focus_place } / total_babies
+    // 1.0 when a candidate is exactly as popular as NAME, falling off as they diverge
+    freq_fit is pick total_babies / target_n when total_babies < target_n
+                else target_n / total_babies
+    // Weighted blend of era-fit x place-fit x fame-fit. Each weight is the
+    // EXPONENT on its factor, so the product stays a 0..1 score and the sliders
+    // read as "how much does this dimension matter": 0 drops the factor out
+    // entirely (x^0 = 1), 1 is the plain equal blend, 3 is very picky.
+    match_score is pow(time_fit, $W_TIME) * pow(place_fit, $W_PLACE) * pow(freq_fit, $W_FREQ)
+}
+
+// "Possible Classmates": names that peak in the same decade, concentrate in the
+// same state, and were about as popular nationally as NAME — same gender
+// (classmates) and opposite gender (might be married to). Two rows (F / M); each
+// nests its ranked top 18, with the three component fits so the UI can say WHY a
+// name matched. This is the only query the weight sliders re-run.
+query: similar_names is names_vs_target -> {
+  where: not (name ~ $NAME)
+  group_by: gender
+  nest: names is {
+    group_by: name
+    aggregate: cohort is total_babies, match_score, time_fit, place_fit, freq_fit
+    having: total_babies > 3000
+    order_by: match_score desc
+    limit: 18
+  }
+}
+
+// One-row header for the tile: NAME's peak decade, most-concentrated state, and
+// the national total its peers are matched against.
+query: name_signature is names_vs_target -> {
+  group_by: top_state is ssig.target_state
+  aggregate:
+    peak_decade
+    national is total_babies { where: name ~ $NAME }
+}

@@ -3,5 +3,8 @@
     "duckdb": {
       "is": "duckdb"
     }
+  },
+  "malloyyo": {
+    "image_hosts": ["image.tmdb.org"]
   }
 }

@@ -1,0 +1,209 @@
+##! experimental.virtual_source experimental.persistence experimental.join_types experimental.givens experimental.access_modifiers
+
+// storage sources — data/ in this repo, via project-relative paths.
+// gs.malloy (GCS) and md.malloy (MotherDuck) define the same source names.
+//import "storage.malloy"
+import "gs.malloy"
+
+given:
+  # label="Name" suggest{query=name_options dimension=name}
+  NAME :: filter<string> is f'Tom Hanks'
+
+  # label="Movie Title"  suggest{source=movies dimension=primaryTitle}
+  TITLE :: filter<string> is f''
+
+  # label="Genre"  suggest{source=movies dimension=genre}
+  GENRE :: filter<string> is f''
+
+source: people is people_table extend {
+  // cast, crew, everyone involved in movies
+  primary_key: nconst
+
+  // nconst IS the IMDb person id, so the page needs no lookup — the same deal
+  // as tconst and movie_url.
+  # link
+  dimension: person_url is concat('https://www.imdb.com/name/', nconst)
+}
+
+source: principals is principals_table extend {
+  // a mapping table that links people to movies, along with their job on that movie.
+  join_one: people is people on nconst = people.nconst
+  measure: principal_count is count()
+}
+
+source: poster_paths is poster_paths_table extend {
+  // imdb_id -> TMDB poster_path. Rows exist for titles TMDB doesn't have or
+  // has no artwork for, so poster_path is null unless status = 'ok'.
+  primary_key: imdb_id
+}
+
+query: genre_movie_map is titles_table -> {
+  group_by:
+    tconst
+    genre is genres.value
+}
+
+query: titles_per_year is titles_table -> {
+  group_by:
+    release_year is startYear
+  aggregate: title_count is count(tconst)
+}
+
+
+#" IMDB dataset of the the most popular movies in the imdb (by total_votes)"
+#|(agent) 
+   People on a movie are exposed as two flattened pairs so you don't have to
+   walk the principals -> people join:
+     (name,  job)  - a person and the role they played on the movie
+     (name2, job2) - a SECOND, independent person on the same title
+   Group/filter on these directly. Combine the two pairs to relate two people
+   on one movie - e.g. composers who worked with a given director.
+
+   Genres follow the same flattened-pair pattern:
+     genre  - a genre on the movie
+     genre2 - a SECOND, independent genre on the same title
+   Group/filter on these directly. Combine the two to relate two genres on one
+   movie - e.g. how often comedy and romance appear together.
+
+   Possible job / job2 values (most to least common):
+     actor, actress, producer, writer, editor, composer, casting_director,
+     director, cinematographer, production_designer, self, archive_footage,
+     archive_sound
+|#
+source: movies is titles_table extend {
+  // all the movies
+  join_many: principals on tconst = principals.tconst
+  join_many: principals2 is principals on tconst = principals2.tconst
+  join_many: genre_movie_map on tconst = genre_movie_map.tconst
+  join_many: director is people on directors.each = director.nconst
+  join_one: poster_paths on tconst = poster_paths.imdb_id
+  primary_key: tconst
+
+  measure:
+    # label="Title Count"
+    title_count is count(tconst)
+    row_count is count()
+    # format="#,###" label="Total Ratings"
+    total_ratings is sum(numVotes / 1000.0)
+    # label="Average Rating"
+    average_rating is averageRating.avg()
+    # percent label="Percent of Titles"
+    percent_of_titles is title_count / all(title_count)
+
+  dimension:
+    // TMDB serves images with no auth, so the static site hotlinks the CDN.
+    // poster_path already starts with '/' - don't add another. Null when TMDB
+    // has no artwork, which pick keeps null rather than concat'ing a URL that
+    // would 404. Sizes: w92/w154 table rows, w185 card grids, w342+ detail.
+    # image {width="103px" height="154px"} label="Poster"
+    movie_image is pick null when poster_paths.poster_path is null
+      else concat('https://image.tmdb.org/t/p/w154', poster_paths.poster_path)
+
+    // Same poster at the smallest size TMDB offers, for dense table rows -
+    // a 100-row list at w185 is several megabytes.
+    # image {width="46px" height="69px"} label="Poster"
+    movie_thumb is pick null when poster_paths.poster_path is null
+      else concat('https://image.tmdb.org/t/p/w92', poster_paths.poster_path)
+    # link
+    movie_url is concat('https://www.imdb.com/title/', tconst)
+
+    # label="Title"
+    title is primaryTitle
+
+    # drill {to=[genre_pairs] given=GENRE}
+    genre is genres.value
+    # drill {to=[genre_pairs] given=GENRE2}
+    genre2 is genre_movie_map.genre
+    job is principals.category
+    job2 is principals2.category
+
+    # drill {to=[works_together] given=NAME}
+    name is principals.people.primaryName
+
+    # drill {to=[works_together] given=NAME}
+    name2 is principals2.people.primaryName
+
+    // IMDb pages for the two flattened people. Note these key off nconst while
+    // `name`/`name2` are primaryName, which is NOT unique — group by the url
+    // (or nconst) alongside the name whenever two people sharing a name must
+    // not be merged into one row.
+    # link
+    name_url is principals.people.person_url
+    # link
+    name2_url is principals2.people.person_url
+
+    # number="####" label="Year"
+    release_year is startYear
+
+
+  #" Movies with poster, year and vote count
+  view: by_title is {
+    group_by:
+      tconst, title, release_year, numVotes
+    order_by: numVotes desc
+  }
+
+  # bar_chart
+  #" Genres by title count and average year
+  view: genre_and_time is {
+    group_by: genre is genre2
+    aggregate: title_count
+    aggregate: avg_year is release_year.avg()
+  }
+
+  # line_chart
+  #" Titles released per year
+  view: by_year is {
+    group_by: release_year
+    aggregate: title_count
+    order_by: release_year desc
+  }
+
+  #" People (cast and crew) by ratings and number of titles
+  view: by_name is {
+    group_by: principals.people.primaryName, principals.nconst
+    aggregate: total_ratings, title_count
+  }
+
+  #" Find people that worked together, filter on name (e.g. where: name = 'Tom Hanks')
+  view: works_with is {
+    where: name != name2
+    group_by: name2
+    aggregate: title_count, percent_of_titles
+    # list
+    nest: by_job is {
+      group_by: job is principals2.category
+      aggregate: title_count
+    }
+    limit: 10
+  }
+
+  #" Genres by title count and ratings
+  view: by_genre is {
+    group_by: genre is genres.value
+    aggregate: title_count, total_ratings, percent_of_titles
+  }
+
+  #" Top directors by total ratings
+  view: top_directors is {
+    limit: 100
+    where: job = 'director'
+    group_by: 
+      name 
+      principals.nconst
+    aggregate: total_ratings
+  }
+
+  #" Top actors and actresses by total ratings
+  view: top_actors is {
+    limit: 100
+    where: job = 'actor' | 'actress'
+    group_by: name, principals.nconst
+    aggregate: total_ratings
+  }
+}
+
+query: name_options is movies -> {
+  group_by: name 
+  aggregate: total_ratings
+}

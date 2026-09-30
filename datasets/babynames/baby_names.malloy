@@ -1,0 +1,118 @@
+##! experimental { access_modifiers givens }
+
+import "gs.malloy"
+
+given:
+  # label="State" control=select suggest { source=baby_names dimension=state }
+  STATE :: filter<string> is f'NY'
+  # label="Years" range_min=1910 range_max=2025
+  YEAR_RANGE :: filter<number> is f'[1910 to 1930]'
+  # label="Min regional births"
+  MIN_SAMPLE :: filter<number> is f'> 200'
+  # label="Name" suggest { source=baby_names dimension=name }
+  NAME :: filter<string> is f'Emma'
+// Precomputed national rank per name (across all years/states/genders).
+// Done once as its own query so it's cheap to join, rather than an expensive
+// windowed view recomputed on every dashboard render.
+
+#" Baby names from the Social Security Administration "
+source: baby_names_base is baby_names_table
+include {
+  private: `year`, `number`
+  public: 
+    #" 'F' or 'M'"
+    gender,
+    #" First name of the baby
+    # drill { to=["name_explorer", "time-series"] }
+    name,
+    #" Two letter state code
+    state,
+    *
+} 
+extend {
+  // don't export reserved words as columns.
+  dimension:
+    birth_year is `year`::number
+    num_births is `number`
+
+  dimension:
+    is_female is gender = 'F'
+    decade is floor(birth_year / 10) * 10
+    era is
+      pick 'Pre-1950' when birth_year < 1950
+      pick '1950-1999' when birth_year < 2000
+      else '2000+'
+    name_length is length(name)
+    region is state ?
+      pick 'Northeast' when = 'CT' | 'ME' | 'MA' | 'NH' | 'RI' | 'VT' | 'NJ' | 'NY' | 'PA'
+      pick 'Midwest'   when = 'IL' | 'IN' | 'MI' | 'OH' | 'WI' | 'IA' | 'KS' | 'MN' | 'MO' | 'NE' | 'ND' | 'SD'
+      pick 'South'     when = 'DE' | 'FL' | 'GA' | 'MD' | 'NC' | 'SC' | 'VA' | 'DC' | 'WV' | 'AL' | 'KY' | 'MS' | 'TN' | 'AR' | 'LA' | 'OK' | 'TX'
+      pick 'West'      when = 'AZ' | 'CO' | 'ID' | 'MT' | 'NV' | 'NM' | 'UT' | 'WY' | 'AK' | 'CA' | 'HI' | 'OR' | 'WA'
+      else 'Other'
+
+  measure:
+    #" Total babies born in YEAR, GENDER, NAME
+    total_babies is num_births.sum()
+    # percent
+    percent_of_population is total_babies/all(total_babies)
+    distinct_names is count(name)
+    earliest_year is birth_year.min()
+    latest_year is birth_year.max()
+
+}
+
+source: name_facts is baby_names_base -> {
+  group_by: name
+  aggregate: 
+    national_births is total_babies
+} -> {
+  order_by: national_births desc
+  calculate: overall_rank is rank()
+  select: name, national_births
+}
+
+
+source: baby_names is baby_names_base extend {
+  join_one: name_facts on name_facts.name = name
+  view: births_by_decade is {
+    group_by: decade
+    aggregate: total_babies, percent_of_population
+    order_by: decade
+  }
+
+  # line_chart {size=spark y.independent}
+  view: births_by_year is {
+    group_by: birth_year
+    aggregate: total_babies
+    order_by: birth_year
+  }
+
+  # line_chart
+  view:births_by_gender is {
+    # x
+    group_by: birth_year
+    # series
+    group_by: gender
+    # y
+    aggregate: total_babies
+    order_by: birth_year
+
+  }
+  // Per-capita rate of a name within a state: births with the name per 100,000
+  // births in that state. Dividing by the state's total births normalizes for
+  // how big the state is, so a small state can still light up the map.
+
+
+
+}
+
+run: baby_names -> {
+  where: gender = 'F' and (state = 'GA' or state = 'AL' or state = 'MS' or state = 'SC' or state = 'TN' or state = 'LA' or state = 'AR')
+  group_by: name
+  aggregate:
+    south_1920s is total_babies { where: birth_year >= 1920 and birth_year <= 1929 }
+    national_recent is total_babies { where: birth_year >= 2015 }
+  having: south_1920s > 300 and national_recent < 50
+  order_by: south_1920s desc
+  limit: 40 
+}

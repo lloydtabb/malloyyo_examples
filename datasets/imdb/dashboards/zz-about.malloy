@@ -1,0 +1,14 @@
+##! experimental { givens }
+import "../index.malloy"
+
+// The About page. It has no real query to run — the component renders prose —
+// but a dashboard needs an # artifact query, so this one just counts the
+// films (the component shows the total as a stat).
+//
+// The filename is zz-about so it sorts LAST in the nav (dashboards are
+// ordered alphabetically by filename); name="about" keeps the URL slug clean.
+#" About malloyyo-imdb — how it's built and where the data comes from.
+# artifact { name="about" title="About" }
+query: about is movies -> {
+  aggregate: title_count
+}

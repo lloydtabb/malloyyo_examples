@@ -1,0 +1,20 @@
+##! experimental { access_modifiers givens }
+
+import "../index.malloy"
+
+// Flat rows (one per year+state) for the custom animated map (time-series.jsx):
+// the JSX pulls the whole series once via useQuery and scrubs client-side.
+# artifact {title="Name over Time"}
+query: time_series_flat is baby_names -> {
+  where: birth_year < 2008
+  group_by: birth_year, state
+  aggregate:
+    // Births with the name per 100,000 births in that state that year. The
+    // denominator is ALL names in the state/year (no top-level name filter),
+    // so this is a per-capita rate that normalizes for state size.
+    per_100k is total_babies { where: name ~ $NAME } / total_babies * 100000
+} -> {
+  order_by: birth_year
+  select: birth_year, state, per_100k
+  limit: 10000000
+}

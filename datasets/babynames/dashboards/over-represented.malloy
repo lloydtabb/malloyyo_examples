@@ -1,0 +1,34 @@
+##! experimental { access_modifiers givens }
+
+import "../index.malloy"
+
+
+source: baby_names_over is baby_names extend {
+
+  view: overrepresented_names is {
+    group_by: name
+    aggregate:
+      regional is total_babies { where: state ~ $STATE and birth_year ~ $YEAR_RANGE }
+      natl is total_babies
+      overrep_index is (total_babies { where: state ~ $STATE and birth_year ~ $YEAR_RANGE } / all(total_babies { where: state ~ $STATE and birth_year ~ $YEAR_RANGE })) / (total_babies / all(total_babies))
+    having: regional ~ $MIN_SAMPLE
+    order_by: overrep_index desc
+    limit: 25
+  }
+
+  // Declares the dashboard (title + which givens get controls). The custom
+  // component (over-represented.jsx) renders the two flat queries below rather
+  // than this nested shape.
+  # artifact { title="Over-represented baby names"}
+  #" Names most concentrated in the selected state and year range, vs. the nation (male / female columns) "
+  view: overrepresented_by_gender is {
+    nest: male is overrepresented_names + { where: gender = 'M' }
+    nest: female is overrepresented_names + { where: gender = 'F' }
+  }
+
+}
+
+// Flat rows for the custom component: most over-represented names for each
+// gender (name, regional births, national births, overrep_index).
+query: overrep_male is baby_names_over -> overrepresented_names + { where: gender = 'M' }
+query: overrep_female is baby_names_over -> overrepresented_names + { where: gender = 'F' }

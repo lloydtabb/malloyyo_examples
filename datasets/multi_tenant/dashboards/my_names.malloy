@@ -1,0 +1,10 @@
+##! experimental.givens
+
+import "../index.malloy"
+
+// A tag-only dashboard: no component file, no JSX — a tag naming the views to
+// draw, and Malloy's own renderer draws them.
+//
+// There is no filter control anywhere on this page, and that is the point:
+// what it shows is decided by who opened it, not by anything they can set.
+## artifact { title="Your Names" tiles=["my_names -> signed_in_as", "my_names -> headline", "my_names -> most_common", "my_names -> over_time"] }

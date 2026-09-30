@@ -1,0 +1,75 @@
+##! experimental { givens }
+
+// Who is asking. Malloyyo fills this from the signed-in user's address on every
+// query, and a caller cannot set it — the server strips any MALLOYYO_* given a
+// request tries to send. Locally there is nobody asking, so an environment
+// variable stands in:
+//
+//   MALLOYYO_EMAIL=you@example.com malloyyo dashboard dev
+//
+// See `yo_help language/who-is-asking`.
+//
+// The default is deliberately an address no name starts with: if the binder
+// ever failed to supply a value, this model shows NOTHING rather than
+// everything.
+given:
+  MALLOYYO_EMAIL :: string is ''
+
+source: baby_names_table is duckdb.table(
+  'https://storage.googleapis.com/malloyyo/baby_names/baby_names.parquet'
+)
+
+// The tenant key, spelled out once: the first letter of the address, upper-cased.
+// A name belongs to you when it starts with the same letter.
+#" U.S. baby names, narrowed to the ones that share your initial.
+source: my_names is baby_names_table extend {
+  where: upper(substr(name, 1, 1)) = upper(substr($MALLOYYO_EMAIL, 1, 1))
+
+  dimension:
+    #" The letter every row here shares with your address.
+    initial is upper(substr(name, 1, 1))
+    #" Year of birth.
+    birth_year is `year`::number
+
+  measure:
+    #" Babies born with this name.
+    total_babies is `number`.sum()
+    #" How many different names share your initial.
+    distinct_names is count(name)
+    // As text: a year is a label, and the renderer would otherwise print
+    // "1,910" for 1910.
+    #" First year one of them was recorded.
+    first_year is birth_year.min()::string
+    #" Most recent year one of them was recorded.
+    last_year is birth_year.max()::string
+
+  #" Who this page is for. The value is bound by Malloyyo from the session,
+  #" so this tile is also the proof: it is the address that filtered every
+  #" other tile on the page.
+  view: signed_in_as is {
+    group_by:
+      you_are is $MALLOYYO_EMAIL
+      your_initial is initial
+  }
+
+  view: headline is {
+    aggregate: distinct_names, total_babies, first_year, last_year
+  }
+
+  #" The most common names that share your initial.
+  # bar_chart
+  view: most_common is {
+    group_by: name
+    aggregate: total_babies
+    order_by: total_babies desc
+    limit: 15
+  }
+
+  #" How often that initial was used, year by year.
+  # line_chart
+  view: over_time is {
+    group_by: birth_year
+    aggregate: total_babies
+    order_by: birth_year
+  }
+}
