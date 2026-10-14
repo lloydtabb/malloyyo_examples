@@ -16,7 +16,7 @@ source: products is duckdb.table('https://storage.googleapis.com/malloyyo/ecomme
   measure: avg_cost is cost.avg()
   #" Average margin as a share of retail price.
   # percent
-  measure: margin_rate is (retail_price - cost).sum() / retail_price.sum()
+  measure: margin_rate is sum(retail_price - cost) / retail_price.sum()
 
   #" Products and pricing by category.
   view: by_category is {
