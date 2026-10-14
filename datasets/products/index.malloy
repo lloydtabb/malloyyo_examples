@@ -1,0 +1,35 @@
+#" Products in the fictional ecommerce store, one row per product: what it is, who makes it, and what it costs and sells for.
+source: products is duckdb.table('https://storage.googleapis.com/malloyyo/ecommerce/products.parquet') extend {
+  primary_key: id
+
+  #" Retail price minus cost, in dollars, for one product.
+  # currency
+  dimension: unit_margin is retail_price - cost
+
+  #" How many products.
+  measure: product_count is count()
+  #" Average retail price, in dollars.
+  # currency
+  measure: avg_retail_price is retail_price.avg()
+  #" Average cost, in dollars.
+  # currency
+  measure: avg_cost is cost.avg()
+  #" Average margin as a share of retail price.
+  # percent
+  measure: margin_rate is sum(retail_price - cost) / retail_price.sum()
+
+  #" Products and pricing by category.
+  view: by_category is {
+    group_by: category
+    aggregate: product_count, avg_retail_price, margin_rate
+    order_by: product_count desc
+  }
+
+  #" The brands with the most products.
+  view: top_brands is {
+    group_by: brand
+    aggregate: product_count, avg_retail_price
+    order_by: product_count desc
+    limit: 10
+  }
+}
